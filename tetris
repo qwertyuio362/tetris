@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #333;
+            margin: 0;
+            position: relative;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #fff;
+            background-color: #000;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: #0ff;
+            font-size: 2em;
+            font-weight: bold;
+            text-shadow: 0 0 5px #0ff, 0 0 10px #0ff, 0 0 20px #0ff;
+        }
+        .footer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 3em;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 2px 2px 5px #000;
+            letter-spacing: 5px;
+            text-shadow: 
+                0px 0px 5px #FFD700, 
+                0px 0px 10px #FFD700,
+                0px 0px 20px #FFD700;
+        }
+        .win-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3em;
+            color: #32CD32;
+            font-weight: bold;
+            text-shadow: 
+                0 0 10px #32CD32,
+                0 0 20px #32CD32,
+                0 0 40px #32CD32;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <div>Розробник: Daniel Zholobov</div>
+        <div>Очки: <span id="score">0</span></div>
+    </div>
+    <canvas id="tetris" width="240" height="400"></canvas>
+    <div class="footer">ТЕТРІС</div>
+    <div id="winMessage" class="win-message">Ви перемогли!</div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        context.scale(20, 20);
+
+        const colors = ['#00FFFF', '#FFD700', '#ADFF2F', '#FF4500', '#1E90FF', '#8A2BE2', '#FF69B4', '#FF6347', '#7FFF00', '#FF1493'];
+        
+        // Нові фігури
+        const tetrominoes = [
+            [[1, 1, 1, 1]], // I
+            [[1, 1], [1, 1]], // O
+            [[0, 1, 1], [1, 1, 0]], // S
+            [[1, 1, 0], [0, 1, 1]], // Z
+            [[1, 0, 0], [1, 1, 1]], // L
+            [[0, 0, 1], [1, 1, 1]], // J
+            [[0, 1, 0], [1, 1, 1]], // T
+            [[0, 1, 0], [1, 1, 1], [0, 1, 0]], // Plus shape
+            [[1, 0, 1], [1, 1, 1]], // U shape
+            [[1, 1, 1], [0, 1, 0]] // Diamond shape
+        ];
+
+        let board = Array.from({ length: 20 }, () => Array(10).fill(0));
+        let currentTetromino;
+        let currentPosition = { x: 4, y: 0 };
+        let dropInterval = 1000;
+        let dropStart = Date.now();
+        let score = 0;
+        const maxScore = 100; // Заданий максимальний бал для перемоги
+
+        function drawBoard() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            board.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        context.fillStyle = colors[value - 1];
+                        context.fillRect(x, y, 1, 1);
+                        context.strokeStyle = '#000';
+                        context.lineWidth = 0.05;
+                        context.strokeRect(x, y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function drawTetromino() {
+            currentTetromino.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        context.fillStyle = currentTetromino.color;
+                        context.fillRect(currentPosition.x + x, currentPosition.y + y, 1, 1);
+                        context.strokeStyle = '#000';
+                        context.lineWidth = 0.05;
+                        context.strokeRect(currentPosition.x + x, currentPosition.y + y, 1, 1);
+                    }
+                });
+            });
+        }
+
+        function mergeTetromino() {
+            currentTetromino.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        board[currentPosition.y + y][currentPosition.x + x] = currentTetromino.colorIndex;
+                    }
+                });
+            });
+        }
+
+        function checkCollision(offsetX, offsetY) {
+            return currentTetromino.shape.some((row, y) => {
+                return row.some((value, x) => {
+                    if (value) {
+                        const newX = currentPosition.x + x + offsetX;
+                        const newY = currentPosition.y + y + offsetY;
+                        return newX < 0 || newX >= 10 || newY >= 20 || (newY >= 0 && board[newY][newX]);
+                    }
+                    return false;
+                });
+            });
+        }
+
+        function rotateTetromino() {
+            const newShape = currentTetromino.shape[0].map((_, index) => currentTetromino.shape.map(row => row[index]).reverse());
+            const originalShape = currentTetromino.shape;
+            currentTetromino.shape = newShape;
+
+            if (checkCollision(0, 0)) {
+                currentTetromino.shape = originalShape;
+            }
+        }
+
+        function dropTetromino() {
+            if (!checkCollision(0, 1)) {
+                currentPosition.y++;
+            } else {
+                mergeTetromino();
+                clearLines();
+                spawnTetromino();
+            }
+        }
+
+        function clearLines() {
+            let linesCleared = 0;
+            board = board.filter(row => {
+                if (row.every(value => value)) {
+                    linesCleared++;
+                    return false;
+                }
+                return true;
+            });
+            while (board.length < 20) {
+                board.unshift(Array(10).fill(0));
+            }
+
+            score += linesCleared * 10;
+            document.getElementById('score').innerText = score;
+
+            if (score >= maxScore) {
+                document.getElementById('winMessage').style.display = 'block';
+            }
+        }
+
+        function spawnTetromino() {
+            const randomIndex = Math.floor(Math.random() * tetrominoes.length);
+            currentTetromino = {
+                shape: tetrominoes[randomIndex],
+                color: colors[randomIndex],
+                colorIndex: randomIndex + 1
+            };
+            currentPosition = { x: 4, y: 0 };
+
+            if (checkCollision(0, 0)) {
+                alert("Game Over!");
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            board = Array.from({ length: 20 }, () => Array(10).fill(0));
+            score = 0;
+            document.getElementById('score').innerText = score;
+            document.getElementById('winMessage').style.display = 'none';
+            spawnTetromino();
+        }
+
+        function update() {
+            const now = Date.now();
+            if (now - dropStart > dropInterval) {
+                dropTetromino();
+                dropStart = now;
+            }
+            drawBoard();
+            drawTetromino();
+            requestAnimationFrame(update);
+        }
+
+        document.addEventListener('keydown', (event) => {
+            switch (event.key) {
+                case 'ArrowLeft':
+                    if (!checkCollision(-1, 0)) currentPosition.x--;
+                    break;
+                case 'ArrowRight':
+                    if (!checkCollision(1, 0)) currentPosition.x++;
+                    break;
+                case 'ArrowDown':
+                    dropTetromino();
+                    break;
+                case 'ArrowUp':
+                    rotateTetromino();
+                    break;
+                case ' ':
+                    while (!checkCollision(0, 1)) {
+                        currentPosition.y++;
+                    }
+                    mergeTetromino();
+                    clearLines();
+                    spawnTetromino();
+                    break;
+            }
+        });
+
+        spawnTetromino();
+        update();
+    </script>
+</body>
+</html>
